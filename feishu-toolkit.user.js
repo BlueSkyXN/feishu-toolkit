@@ -3,7 +3,7 @@
 // @name:zh-CN   飞书工具箱
 // @name:en      Feishu Toolkit
 // @namespace    https://github.com/BlueSkyXN/feishu-toolkit
-// @version      0.1.0
+// @version      0.1.1
 // @description  飞书网页端增强工具箱：去水印、解除复制/右键/导出/选择限制、保留表格格式、图片一键下载、外链新标签、复制为 Markdown。
 // @description:zh-CN 飞书网页端增强工具箱：去水印、解除复制/右键/导出/选择限制、保留表格格式、图片一键下载、外链新标签、复制为 Markdown。
 // @description:en Enhance Feishu/Lark web pages with watermark hiding, copy/context-menu/select/export helpers, image download, external-link handling, and Markdown copy.
@@ -30,7 +30,7 @@
     // 1. 配置中心
     // ============================================================
     const SCRIPT_NAME = '飞书工具箱';
-    const SCRIPT_VERSION = '0.1.0';
+    const SCRIPT_VERSION = '0.1.1';
     const CONFIG_KEY = 'feishu_toolkit_v1';
     const LEGACY_CONFIG_KEYS = ['feishu_enhancer_pro_v2'];
 
@@ -38,19 +38,74 @@
     // group: 分组渲染   hot: 即时生效（无需刷新）   default: 默认开关
     const FEATURES = [
         // ---- T0 核心保护：解除限制类 ----
-        { key: 'removeWatermark',   label: '去除水印',           group: '核心保护', hot: true,  default: true,  desc: 'CSS 隐藏水印图层' },
-        { key: 'bypassCopy',        label: '解除复制限制',       group: '核心保护', hot: false, default: true,  desc: '改写 XHR 权限响应' },
-        { key: 'bypassContextMenu', label: '解除右键限制',       group: '核心保护', hot: false, default: true,  desc: '拦截 contextmenu 监听' },
-        { key: 'bypassUserSelect',  label: '解除文本选择',       group: '核心保护', hot: true,  default: true,  desc: '强制 user-select: text' },
-        { key: 'bypassDrag',        label: '解除拖拽限制',       group: '核心保护', hot: true,  default: false, desc: '允许拖拽图片/文本' },
-        { key: 'keepTableFormat',   label: '保留表格格式',       group: '核心保护', hot: false, default: true,  desc: '不拦截 copy 事件，复制到 Excel 不变形' },
+        {
+            key: 'removeWatermark', label: '去除水印', group: '核心保护', hot: true, default: true,
+            summary: '隐藏常见水印图层。',
+            impact: '只影响当前网页显示，不修改飞书文档内容。',
+            requirement: '依赖飞书水印 DOM 和 CSS 选择器；飞书前端改版后可能需要补选择器。',
+        },
+        {
+            key: 'bypassCopy', label: '解除复制限制', group: '核心保护', hot: false, default: true,
+            summary: '尝试打开权限响应里的复制能力。',
+            impact: '优先保留飞书原生富文本复制流程，减少表格、格式复制变形。',
+            requirement: '需要刷新后让 XHR hook 早于权限请求生效；只对网页端返回的权限位有效。',
+        },
+        {
+            key: 'bypassContextMenu', label: '解除右键限制', group: '核心保护', hot: false, default: true,
+            summary: '恢复浏览器原生右键菜单。',
+            impact: '会阻止飞书注册部分 contextmenu 拦截器，便于复制、另存图片或检查元素。',
+            requirement: '需要刷新后在页面早期 hook addEventListener；已注册的监听不会自动移除。',
+        },
+        {
+            key: 'bypassUserSelect', label: '解除文本选择', group: '核心保护', hot: true, default: true,
+            summary: '强制页面文本可选中。',
+            impact: '提高普通 DOM 文本选择成功率。',
+            requirement: '只影响可选中的网页文本；canvas、图片或特殊编辑器内容不一定生效。',
+        },
+        {
+            key: 'bypassDrag', label: '解除拖拽限制', group: '核心保护', hot: true, default: false,
+            summary: '允许拖拽图片和文本。',
+            impact: '可能改变飞书自己的拖拽交互，默认关闭，需要时再开。',
+            requirement: '依赖浏览器原生 draggable 行为；受飞书组件实现和浏览器策略影响。',
+        },
+        {
+            key: 'keepTableFormat', label: '保留表格格式', group: '核心保护', hot: false, default: true,
+            summary: '复制到 Excel / Word 时尽量保留格式。',
+            impact: '不主动抢占 copy 事件，让飞书自己写入 HTML 剪贴板；关闭后可能更强力但格式更容易丢。',
+            requirement: '需要刷新后影响后续 copy 监听注册；建议和“解除复制限制”一起开启。',
+        },
         // ---- T1 体验增强 ----
-        { key: 'forceExport',       label: '强制导出/下载',      group: '体验增强', hot: false, default: true,  desc: '把所有权限位 0 改 1（download/export/print 等）' },
-        { key: 'imageDownload',     label: '图片悬停下载按钮',   group: '体验增强', hot: true,  default: true,  desc: '鼠标悬停图片时显示下载按钮，获取原图' },
-        { key: 'linksNewTab',       label: '外链新标签打开',     group: '体验增强', hot: true,  default: true,  desc: '飞书域外链接强制新标签' },
-        { key: 'copyAsMarkdown',    label: '复制为 Markdown',    group: '体验增强', hot: true,  default: true,  desc: '快捷键 Ctrl+Shift+C 把选区转 MD 写入剪贴板' },
+        {
+            key: 'forceExport', label: '强制导出/下载', group: '体验增强', hot: false, default: true,
+            summary: '尝试打开下载、导出、打印等权限入口。',
+            impact: '可能让前端入口可见或可点击，但不保证服务端最终允许导出。',
+            requirement: '需要刷新后在权限接口返回前生效；受账号权限、文档权限和服务端校验限制。',
+        },
+        {
+            key: 'imageDownload', label: '图片悬停下载按钮', group: '体验增强', hot: true, default: true,
+            summary: '鼠标悬停图片时显示下载按钮。',
+            impact: '尝试按图片 src 拉取原图并保存到本地。',
+            requirement: '图片必须有浏览器可访问的地址；跨域、权限、懒加载或防盗链可能导致下载失败。',
+        },
+        {
+            key: 'linksNewTab', label: '外链新标签打开', group: '体验增强', hot: true, default: true,
+            summary: '站外链接自动新标签打开。',
+            impact: '减少离开当前飞书页面的概率；飞书域内链接保持原行为。',
+            requirement: '只处理点击时能解析到 href 的链接。',
+        },
+        {
+            key: 'copyAsMarkdown', label: '复制为 Markdown', group: '体验增强', hot: true, default: true,
+            summary: '用 Ctrl/Command+Shift+C 复制选区 Markdown。',
+            impact: '把当前选区 HTML 简单转换为 Markdown 并写入剪贴板。',
+            requirement: '需要先选中内容，并且浏览器允许当前页面在用户操作中写剪贴板。',
+        },
         // ---- 辅助 ----
-        { key: 'debug',             label: '调试日志',           group: '辅助',     hot: true,  default: false, desc: '在控制台输出运行信息' },
+        {
+            key: 'debug', label: '调试日志', group: '辅助', hot: true, default: false,
+            summary: '在控制台输出脚本运行信息。',
+            impact: '便于排查功能是否生效，也可能让控制台更吵。',
+            requirement: '仅建议调试时开启；日志只写入本机浏览器 DevTools console。',
+        },
     ];
 
     // GM 兼容性 polyfill（极少数环境无 GM_*，降级到 localStorage）
@@ -428,89 +483,204 @@
     // ============================================================
     // 5. 设置面板 UI
     // ============================================================
+    let openSettingsPanel = null;
+    let closeSettingsPanel = null;
+    const PANEL_GROUP_LABELS = {
+        '核心保护': '核心',
+        '体验增强': '体验',
+        '辅助': '高级',
+    };
+
     const PANEL_CSS = `
         #ftk-fab {
-            position: fixed; right: 20px; bottom: 20px; z-index: 2147483646;
-            width: 44px; height: 44px; border-radius: 50%;
-            background: linear-gradient(135deg, #3370ff, #4a8cff);
-            color: #fff; display: flex; align-items: center; justify-content: center;
-            cursor: pointer; box-shadow: 0 4px 16px rgba(51,112,255,.35);
-            font-size: 20px; user-select: none;
-            transition: transform .2s ease, box-shadow .2s ease;
+            position: fixed; right: 0; top: 50%; z-index: 2147483646;
+            width: 10px; height: 42px; transform: translateY(-50%);
+            border: 0; border-radius: 8px 0 0 8px; padding: 0 10px 0 7px;
+            background: rgba(100, 106, 115, .42); color: #3370ff;
+            display: flex; align-items: center; justify-content: flex-start; gap: 7px;
+            cursor: pointer; overflow: hidden; user-select: none;
+            box-shadow: none; opacity: .72;
+            font: 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
+            transition: width .18s ease, opacity .18s ease, background .18s ease, box-shadow .18s ease;
         }
-        #ftk-fab:hover { transform: scale(1.08); box-shadow: 0 6px 20px rgba(51,112,255,.5); }
-        #ftk-fab.active { transform: rotate(60deg); }
+        #ftk-fab:hover,
+        #ftk-fab:focus-visible,
+        #ftk-fab.active {
+            width: 52px; opacity: 1; background: #fff;
+            box-shadow: 0 6px 20px rgba(31,35,41,.14), 0 0 0 1px rgba(31,35,41,.08);
+            outline: none;
+        }
+        #ftk-fab .ftk-grip {
+            width: 3px; height: 18px; border-radius: 99px;
+            background: rgba(255,255,255,.82); flex: 0 0 auto;
+        }
+        #ftk-fab:hover .ftk-grip,
+        #ftk-fab:focus-visible .ftk-grip,
+        #ftk-fab.active .ftk-grip {
+            background: #3370ff;
+        }
+        #ftk-fab .ftk-fab-label {
+            opacity: 0; white-space: nowrap; color: #3370ff; font-weight: 500;
+            transition: opacity .16s ease;
+        }
+        #ftk-fab:hover .ftk-fab-label,
+        #ftk-fab:focus-visible .ftk-fab-label,
+        #ftk-fab.active .ftk-fab-label {
+            opacity: 1;
+        }
 
         #ftk-panel {
-            position: fixed; right: 20px; bottom: 76px; z-index: 2147483647;
-            width: 340px; max-height: 80vh; overflow-y: auto;
+            position: fixed; right: 0; top: 0; z-index: 2147483647;
+            width: min(396px, calc(100vw - 28px)); height: 100vh; height: 100dvh;
             background: #fff; color: #1f2329;
-            border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,.18);
-            padding: 16px 18px;
+            box-shadow: -10px 0 30px rgba(31,35,41,.12), -1px 0 0 rgba(31,35,41,.08);
+            padding: 0;
             font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
-            display: none; opacity: 0; transform: translateY(8px);
-            transition: opacity .18s ease, transform .18s ease;
+            display: flex; flex-direction: column;
+            opacity: 0; pointer-events: none; transform: translateX(calc(100% + 16px));
+            transition: opacity .2s ease, transform .22s cubic-bezier(.2,.8,.2,1);
         }
-        #ftk-panel.show { display: block; }
-        #ftk-panel.show.in { opacity: 1; transform: translateY(0); }
+        #ftk-panel.show { opacity: 1; pointer-events: auto; transform: translateX(0); }
 
         #ftk-panel .ftk-head {
-            display: flex; align-items: baseline; justify-content: space-between;
-            margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid #f0f1f3;
-        }
-        #ftk-panel .ftk-head h3 { margin: 0; font-size: 15px; font-weight: 600; }
-        #ftk-panel .ftk-head .ver { font-size: 11px; color: #8f959e; }
-
-        #ftk-panel .ftk-group { margin: 12px 0 4px; }
-        #ftk-panel .ftk-group-title {
-            font-size: 11px; color: #8f959e; font-weight: 600;
-            text-transform: uppercase; letter-spacing: .5px; margin: 8px 0 4px;
-        }
-
-        #ftk-panel .ftk-row {
             display: flex; align-items: center; justify-content: space-between;
-            padding: 8px 0; gap: 10px;
+            padding: 18px 18px 14px; border-bottom: 1px solid #eff0f1;
+            flex: 0 0 auto;
         }
-        #ftk-panel .ftk-label { flex: 1; min-width: 0; }
-        #ftk-panel .ftk-label .name {
-            font-weight: 500; font-size: 13.5px;
+        #ftk-panel .ftk-title { min-width: 0; }
+        #ftk-panel .ftk-head h3 {
+            margin: 0; font-size: 15px; line-height: 22px; font-weight: 600; letter-spacing: 0;
+        }
+        #ftk-panel .ftk-head .ver {
+            color: #8f959e; font-size: 12px; line-height: 18px; margin-top: 1px;
+        }
+        #ftk-panel .ftk-close {
+            width: 28px; height: 28px; border: 0; border-radius: 6px; background: transparent;
+            color: #646a73; cursor: pointer; font-size: 20px; line-height: 28px; padding: 0;
+            display: flex; align-items: center; justify-content: center;
+            transition: background .15s ease, color .15s ease;
+        }
+        #ftk-panel .ftk-close:hover,
+        #ftk-panel .ftk-close:focus-visible {
+            background: #f2f3f5; color: #1f2329; outline: none;
+        }
+
+        #ftk-panel .ftk-body {
+            flex: 1 1 auto; overflow-y: auto; padding: 8px 18px 18px;
+            scrollbar-width: thin; scrollbar-color: rgba(100,106,115,.34) transparent;
+        }
+        #ftk-panel .ftk-body::-webkit-scrollbar { width: 6px; }
+        #ftk-panel .ftk-body::-webkit-scrollbar-track { background: transparent; }
+        #ftk-panel .ftk-body::-webkit-scrollbar-thumb {
+            background: rgba(100,106,115,.28); border-radius: 99px;
+        }
+
+        #ftk-panel .ftk-group { margin: 14px 0 18px; }
+        #ftk-panel .ftk-group-title {
+            font-size: 12px; line-height: 18px; color: #8f959e; font-weight: 600;
+            letter-spacing: 0; margin: 0 0 8px;
+        }
+
+        #ftk-panel .ftk-item {
+            position: relative; border-bottom: 1px solid #f2f3f5;
+        }
+        #ftk-panel .ftk-item:last-child { border-bottom: 0; }
+        #ftk-panel .ftk-row {
+            display: flex; align-items: center; justify-content: space-between; gap: 12px;
+            min-height: 56px; padding: 9px 10px; margin: 0 -10px;
+            border-radius: 8px;
+            transition: background .15s ease;
+        }
+        #ftk-panel .ftk-row:hover { background: #f7f8fa; }
+        #ftk-panel .ftk-copy {
+            display: block; min-width: 0; flex: 1;
+        }
+        #ftk-panel .ftk-topline {
+            display: flex; align-items: center; gap: 8px; min-width: 0;
+        }
+        #ftk-panel .ftk-name {
+            font-weight: 500; font-size: 14px; line-height: 20px;
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
-        #ftk-panel .ftk-label .desc {
-            color: #8f959e; font-size: 12px; margin-top: 2px;
-            line-height: 1.4;
+        #ftk-panel .ftk-state {
+            flex: 0 0 auto; padding: 1px 5px; border-radius: 4px;
+            color: #8f959e; background: #f2f3f5;
+            font-size: 11px; line-height: 16px; font-weight: 500;
         }
-        #ftk-panel .ftk-tag {
-            display: inline-block; font-size: 10px; padding: 1px 5px; border-radius: 3px;
-            margin-left: 6px; vertical-align: 2px; font-weight: normal;
+        #ftk-panel .ftk-state.reload { color: #b76e00; background: #fff4df; }
+        #ftk-panel .ftk-help-wrap {
+            position: static; flex: 0 0 auto; display: inline-flex;
         }
-        #ftk-panel .ftk-tag.hot    { background: #e8f3ff; color: #3370ff; }
-        #ftk-panel .ftk-tag.reload { background: #fff3e0; color: #ff7a00; }
+        #ftk-panel .ftk-help {
+            width: 18px; height: 18px; border-radius: 50%;
+            border: 0; padding: 0; cursor: help;
+            display: inline-flex; align-items: center; justify-content: center;
+            background: #eff0f1; color: #8f959e;
+            font-size: 12px; line-height: 18px; font-weight: 600;
+        }
+        #ftk-panel .ftk-help:hover,
+        #ftk-panel .ftk-help:focus-visible,
+        #ftk-panel .ftk-help-wrap.pinned .ftk-help {
+            background: #e8f3ff; color: #3370ff; outline: none;
+        }
+        #ftk-panel .ftk-tip {
+            display: none; position: absolute; left: 10px; right: 10px; top: 42px; z-index: 3;
+            padding: 10px 12px; border-radius: 8px;
+            background: #fff; color: #646a73;
+            box-shadow: 0 10px 28px rgba(31,35,41,.16), 0 0 0 1px rgba(31,35,41,.08);
+            font-size: 12px; line-height: 18px; white-space: normal;
+            opacity: 0; transform: translateY(-3px); pointer-events: none;
+            transition: opacity .14s ease, transform .14s ease;
+        }
+        #ftk-panel .ftk-tip div + div { margin-top: 5px; }
+        #ftk-panel .ftk-tip b { color: #1f2329; font-weight: 600; }
+        #ftk-panel .ftk-help-wrap:hover .ftk-tip,
+        #ftk-panel .ftk-help:focus-visible + .ftk-tip,
+        #ftk-panel .ftk-help-wrap.pinned .ftk-tip {
+            display: block; opacity: 1; transform: translateY(0); pointer-events: auto;
+        }
+        #ftk-panel .ftk-summary {
+            display: block; margin-top: 2px; color: #8f959e;
+            font-size: 12px; line-height: 18px;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
 
-        .ftk-switch { position: relative; width: 36px; height: 20px; flex-shrink: 0; }
+        .ftk-switch { position: relative; width: 34px; height: 20px; flex-shrink: 0; }
         .ftk-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
         .ftk-slider {
             position: absolute; cursor: pointer; inset: 0;
-            background: #d1d5db; border-radius: 20px; transition: .2s;
+            background: #c9cdd4; border-radius: 20px; transition: background .18s ease;
         }
         .ftk-slider:before {
             content: ""; position: absolute; height: 16px; width: 16px;
             left: 2px; bottom: 2px; background: #fff; border-radius: 50%; transition: .2s;
-            box-shadow: 0 1px 2px rgba(0,0,0,.2);
+            box-shadow: 0 1px 2px rgba(31,35,41,.22);
         }
         .ftk-switch input:checked + .ftk-slider { background: #3370ff; }
-        .ftk-switch input:checked + .ftk-slider:before { transform: translateX(16px); }
+        .ftk-switch input:checked + .ftk-slider:before { transform: translateX(14px); }
+        .ftk-switch input:focus-visible + .ftk-slider {
+            box-shadow: 0 0 0 3px rgba(51,112,255,.18);
+        }
 
         #ftk-panel .ftk-footer {
-            margin-top: 14px; padding-top: 12px; border-top: 1px solid #f0f1f3;
-            display: flex; gap: 8px;
+            flex: 0 0 auto; padding: 12px 18px 18px; border-top: 1px solid #eff0f1;
+            background: #fff;
+        }
+        #ftk-panel .ftk-notice {
+            display: none; align-items: center; gap: 6px; margin-bottom: 10px;
+            color: #8f959e; font-size: 12px; line-height: 18px;
+        }
+        #ftk-panel .ftk-notice.show { display: flex; }
+        #ftk-panel .ftk-actions {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
         }
         #ftk-panel .ftk-btn {
-            flex: 1; padding: 7px 12px; border: 1px solid #e5e6eb;
-            border-radius: 6px; background: #fff; cursor: pointer; font-size: 13px;
-            transition: all .15s ease;
+            height: 34px; padding: 0 12px; border: 1px solid #dee0e3;
+            border-radius: 6px; background: #fff; color: #1f2329;
+            cursor: pointer; font-size: 13px; font-weight: 500;
+            transition: background .15s ease, border-color .15s ease;
         }
-        #ftk-panel .ftk-btn:hover { background: #f5f6f8; }
+        #ftk-panel .ftk-btn:hover { background: #f5f6f8; border-color: #c9cdd4; }
         #ftk-panel .ftk-btn.primary {
             background: #3370ff; color: #fff; border-color: #3370ff;
         }
@@ -530,62 +700,108 @@
         if (document.getElementById('ftk-fab')) return;
         GM.style(PANEL_CSS);
 
-        const fab = $el('div', { id: 'ftk-fab', title: `${SCRIPT_NAME} 设置` }, '⚙');
+        const fab = $el('button', {
+            id: 'ftk-fab',
+            type: 'button',
+            title: `${SCRIPT_NAME} 设置`,
+            'aria-label': `${SCRIPT_NAME} 设置`,
+        }, [
+            $el('span', { class: 'ftk-grip' }),
+            $el('span', { class: 'ftk-fab-label' }, '设置'),
+        ]);
         document.body.appendChild(fab);
 
-        const panel = $el('div', { id: 'ftk-panel' });
+        const panel = $el('aside', { id: 'ftk-panel', 'aria-label': `${SCRIPT_NAME} 设置`, 'aria-hidden': 'true' });
         const head = $el('div', { class: 'ftk-head' }, [
-            $el('h3', {}, `${SCRIPT_NAME} · 设置`),
-            $el('span', { class: 'ver' }, `v${SCRIPT_VERSION}`),
+            $el('div', { class: 'ftk-title' }, [
+                $el('h3', {}, SCRIPT_NAME),
+                $el('div', { class: 'ver' }, `v${SCRIPT_VERSION}`),
+            ]),
+            $el('button', { class: 'ftk-close', type: 'button', 'data-act': 'close', 'aria-label': '关闭设置' }, '×'),
         ]);
         panel.appendChild(head);
+
+        const body = $el('div', { class: 'ftk-body' });
 
         // 按 group 分组渲染
         const groups = {};
         FEATURES.forEach(f => { (groups[f.group] = groups[f.group] || []).push(f); });
         for (const [groupName, items] of Object.entries(groups)) {
             const groupEl = $el('div', { class: 'ftk-group' });
-            groupEl.appendChild($el('div', { class: 'ftk-group-title' }, groupName));
+            groupEl.appendChild($el('div', { class: 'ftk-group-title' }, PANEL_GROUP_LABELS[groupName] || groupName));
             items.forEach(meta => {
-                const tagClass = meta.hot ? 'hot' : 'reload';
-                const tagText  = meta.hot ? '即时' : '需刷新';
+                const item = $el('div', { class: 'ftk-item' });
+                const effectText = meta.hot ? '即时生效' : '刷新生效';
+                const effectClass = meta.hot ? 'hot' : 'reload';
                 const row = $el('div', { class: 'ftk-row' });
                 row.innerHTML = `
-                    <div class="ftk-label">
-                        <div class="name">${meta.label}<span class="ftk-tag ${tagClass}">${tagText}</span></div>
-                        <div class="desc">${meta.desc}</div>
-                    </div>
-                    <label class="ftk-switch">
+                    <span class="ftk-copy">
+                        <span class="ftk-topline">
+                            <span class="ftk-name">${meta.label}</span>
+                            <span class="ftk-state ${effectClass}">${effectText}</span>
+                            <span class="ftk-help-wrap">
+                                <button class="ftk-help" type="button" aria-label="${meta.label} 的影响和前置条件">?</button>
+                                <span class="ftk-tip" role="tooltip">
+                                    <div><b>影响：</b>${meta.impact}</div>
+                                    <div><b>前置：</b>${meta.requirement}</div>
+                                    <div><b>生效：</b>${effectText}</div>
+                                </span>
+                            </span>
+                        </span>
+                        <span class="ftk-summary">${meta.summary}</span>
+                    </span>
+                    <label class="ftk-switch" aria-label="${meta.label}">
                         <input type="checkbox" data-key="${meta.key}" ${config[meta.key] ? 'checked' : ''}>
                         <span class="ftk-slider"></span>
                     </label>
                 `;
-                groupEl.appendChild(row);
+                item.appendChild(row);
+                groupEl.appendChild(item);
             });
-            panel.appendChild(groupEl);
+            body.appendChild(groupEl);
         }
+        panel.appendChild(body);
 
         const footer = $el('div', { class: 'ftk-footer' });
         footer.innerHTML = `
-            <button class="ftk-btn" data-act="reset">恢复默认</button>
-            <button class="ftk-btn primary" data-act="reload">立即刷新</button>
+            <div class="ftk-notice" id="ftk-reload-notice">部分设置刷新后生效</div>
+            <div class="ftk-actions">
+                <button class="ftk-btn" data-act="reset">恢复默认</button>
+                <button class="ftk-btn primary" data-act="reload">刷新生效</button>
+            </div>
         `;
         panel.appendChild(footer);
         document.body.appendChild(panel);
 
         // 切换显隐
-        const togglePanel = () => {
-            const showing = panel.classList.toggle('show');
-            fab.classList.toggle('active', showing);
-            if (showing) requestAnimationFrame(() => panel.classList.add('in'));
-            else panel.classList.remove('in');
+        const showPanel = () => {
+            panel.classList.add('show');
+            panel.setAttribute('aria-hidden', 'false');
+            fab.classList.add('active');
         };
-        fab.addEventListener('click', togglePanel);
+        const hidePanel = () => {
+            panel.classList.remove('show');
+            panel.setAttribute('aria-hidden', 'true');
+            fab.classList.remove('active');
+        };
+        const togglePanel = () => {
+            if (panel.classList.contains('show')) hidePanel();
+            else showPanel();
+        };
+        openSettingsPanel = showPanel;
+        closeSettingsPanel = hidePanel;
+
+        fab.addEventListener('click', e => {
+            e.stopPropagation();
+            togglePanel();
+        });
         document.addEventListener('click', e => {
             if (!panel.contains(e.target) && !fab.contains(e.target) && panel.classList.contains('show')) {
-                panel.classList.remove('show', 'in');
-                fab.classList.remove('active');
+                hidePanel();
             }
+        });
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape' && panel.classList.contains('show')) hidePanel();
         });
 
         // 开关变更
@@ -595,13 +811,31 @@
             config[key] = e.target.checked;
             saveConfig(config);
             log(`配置变更：${key} = ${config[key]}`);
+            const meta = FEATURES.find(f => f.key === key);
+            if (meta && !meta.hot) panel.querySelector('#ftk-reload-notice')?.classList.add('show');
             // 即时生效模块重新 apply
             applyAllHotModules();
         });
 
         // 按钮
         panel.addEventListener('click', e => {
+            const help = e.target.closest('.ftk-help');
+            if (help) {
+                e.preventDefault();
+                e.stopPropagation();
+                const wrap = help.closest('.ftk-help-wrap');
+                const willPin = !wrap.classList.contains('pinned');
+                panel.querySelectorAll('.ftk-help-wrap.pinned').forEach(el => el.classList.remove('pinned'));
+                wrap.classList.toggle('pinned', willPin);
+                return;
+            }
+
+            if (!e.target.closest('.ftk-help-wrap')) {
+                panel.querySelectorAll('.ftk-help-wrap.pinned').forEach(el => el.classList.remove('pinned'));
+            }
+
             const act = e.target.dataset.act;
+            if (act === 'close') closeSettingsPanel?.();
             if (act === 'reload') location.reload();
             if (act === 'reset') {
                 FEATURES.forEach(f => { config[f.key] = f.default; });
@@ -609,6 +843,7 @@
                 panel.querySelectorAll('input[data-key]').forEach(input => {
                     input.checked = config[input.dataset.key];
                 });
+                panel.querySelector('#ftk-reload-notice')?.classList.remove('show');
                 applyAllHotModules();
                 showToast('已恢复默认配置');
             }
@@ -643,8 +878,11 @@
     // 油猴菜单命令（脚本菜单里也能触发）
     if (typeof GM_registerMenuCommand !== 'undefined') {
         GM_registerMenuCommand('打开设置面板', () => {
-            const fab = document.getElementById('ftk-fab');
-            if (fab) fab.click();
+            if (openSettingsPanel) openSettingsPanel();
+            else {
+                boot();
+                setTimeout(() => openSettingsPanel?.(), 80);
+            }
         });
         GM_registerMenuCommand('恢复默认配置', () => {
             FEATURES.forEach(f => { config[f.key] = f.default; });
