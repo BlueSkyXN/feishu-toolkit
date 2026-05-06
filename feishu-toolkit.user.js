@@ -3,7 +3,7 @@
 // @name:zh-CN   飞书工具箱
 // @name:en      Feishu Toolkit
 // @namespace    https://github.com/BlueSkyXN/feishu-toolkit
-// @version      0.1.1
+// @version      0.1.2
 // @description  飞书网页端增强工具箱：去水印、解除复制/右键/导出/选择限制、保留表格格式、图片一键下载、外链新标签、复制为 Markdown。
 // @description:zh-CN 飞书网页端增强工具箱：去水印、解除复制/右键/导出/选择限制、保留表格格式、图片一键下载、外链新标签、复制为 Markdown。
 // @description:en Enhance Feishu/Lark web pages with watermark hiding, copy/context-menu/select/export helpers, image download, external-link handling, and Markdown copy.
@@ -30,7 +30,7 @@
     // 1. 配置中心
     // ============================================================
     const SCRIPT_NAME = '飞书工具箱';
-    const SCRIPT_VERSION = '0.1.1';
+    const SCRIPT_VERSION = '0.1.2';
     const CONFIG_KEY = 'feishu_toolkit_v1';
     const LEGACY_CONFIG_KEYS = ['feishu_enhancer_pro_v2'];
 
@@ -268,6 +268,7 @@
         }
         watermarkStyle.disabled = !config.removeWatermark;
     }
+    applyWatermark();
 
     // -- 4.2 解除文本选择 --
     let userSelectStyle = null;
