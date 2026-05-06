@@ -3,7 +3,7 @@
 // @name:zh-CN   飞书工具箱
 // @name:en      Feishu Toolkit
 // @namespace    https://github.com/BlueSkyXN/feishu-toolkit
-// @version      0.1.2
+// @version      0.1.3
 // @description  飞书网页端增强工具箱：去水印、解除复制/右键/导出/选择限制、保留表格格式、图片一键下载、外链新标签、复制为 Markdown。
 // @description:zh-CN 飞书网页端增强工具箱：去水印、解除复制/右键/导出/选择限制、保留表格格式、图片一键下载、外链新标签、复制为 Markdown。
 // @description:en Enhance Feishu/Lark web pages with watermark hiding, copy/context-menu/select/export helpers, image download, external-link handling, and Markdown copy.
@@ -30,7 +30,7 @@
     // 1. 配置中心
     // ============================================================
     const SCRIPT_NAME = '飞书工具箱';
-    const SCRIPT_VERSION = '0.1.2';
+    const SCRIPT_VERSION = '0.1.3';
     const CONFIG_KEY = 'feishu_toolkit_v1';
     const LEGACY_CONFIG_KEYS = ['feishu_enhancer_pro_v2'];
 
@@ -486,13 +486,17 @@
     // ============================================================
     let openSettingsPanel = null;
     let closeSettingsPanel = null;
+    let baseUiStyle = null;
+    let panelStyle = null;
+    let settingsTrigger = null;
+    let settingsPanel = null;
     const PANEL_GROUP_LABELS = {
         '核心保护': '核心',
         '体验增强': '体验',
         '辅助': '高级',
     };
 
-    const PANEL_CSS = `
+    const BASE_UI_CSS = `
         #ftk-fab {
             position: fixed; right: 0; top: 50%; z-index: 2147483646;
             width: 10px; height: 42px; transform: translateY(-50%);
@@ -530,6 +534,17 @@
             opacity: 1;
         }
 
+        .ftk-toast {
+            position: fixed; left: 50%; top: 60px; transform: translate(-50%, -8px);
+            z-index: 2147483647; background: rgba(0,0,0,.78); color: #fff;
+            padding: 8px 16px; border-radius: 6px; font-size: 13px;
+            opacity: 0; transition: opacity .2s ease, transform .2s ease;
+            pointer-events: none;
+        }
+        .ftk-toast.show { opacity: 1; transform: translate(-50%, 0); }
+    `;
+
+    const PANEL_CSS = `
         #ftk-panel {
             position: fixed; right: 0; top: 0; z-index: 2147483647;
             width: min(396px, calc(100vw - 28px)); height: 100vh; height: 100dvh;
@@ -687,30 +702,11 @@
         }
         #ftk-panel .ftk-btn.primary:hover { background: #2860e0; }
 
-        .ftk-toast {
-            position: fixed; left: 50%; top: 60px; transform: translate(-50%, -8px);
-            z-index: 2147483647; background: rgba(0,0,0,.78); color: #fff;
-            padding: 8px 16px; border-radius: 6px; font-size: 13px;
-            opacity: 0; transition: opacity .2s ease, transform .2s ease;
-            pointer-events: none;
-        }
-        .ftk-toast.show { opacity: 1; transform: translate(-50%, 0); }
     `;
 
     function buildPanel() {
-        if (document.getElementById('ftk-fab')) return;
-        GM.style(PANEL_CSS);
-
-        const fab = $el('button', {
-            id: 'ftk-fab',
-            type: 'button',
-            title: `${SCRIPT_NAME} 设置`,
-            'aria-label': `${SCRIPT_NAME} 设置`,
-        }, [
-            $el('span', { class: 'ftk-grip' }),
-            $el('span', { class: 'ftk-fab-label' }, '设置'),
-        ]);
-        document.body.appendChild(fab);
+        if (settingsPanel) return settingsPanel;
+        if (!panelStyle) panelStyle = GM.style(PANEL_CSS);
 
         const panel = $el('aside', { id: 'ftk-panel', 'aria-label': `${SCRIPT_NAME} 设置`, 'aria-hidden': 'true' });
         const head = $el('div', { class: 'ftk-head' }, [
@@ -773,31 +769,24 @@
         `;
         panel.appendChild(footer);
         document.body.appendChild(panel);
+        settingsPanel = panel;
 
         // 切换显隐
         const showPanel = () => {
             panel.classList.add('show');
             panel.setAttribute('aria-hidden', 'false');
-            fab.classList.add('active');
+            settingsTrigger?.classList.add('active');
         };
         const hidePanel = () => {
             panel.classList.remove('show');
             panel.setAttribute('aria-hidden', 'true');
-            fab.classList.remove('active');
-        };
-        const togglePanel = () => {
-            if (panel.classList.contains('show')) hidePanel();
-            else showPanel();
+            settingsTrigger?.classList.remove('active');
         };
         openSettingsPanel = showPanel;
         closeSettingsPanel = hidePanel;
 
-        fab.addEventListener('click', e => {
-            e.stopPropagation();
-            togglePanel();
-        });
         document.addEventListener('click', e => {
-            if (!panel.contains(e.target) && !fab.contains(e.target) && panel.classList.contains('show')) {
+            if (!panel.contains(e.target) && !settingsTrigger?.contains(e.target) && panel.classList.contains('show')) {
                 hidePanel();
             }
         });
@@ -849,6 +838,40 @@
                 showToast('已恢复默认配置');
             }
         });
+
+        return panel;
+    }
+
+    function ensureSettingsTrigger() {
+        if (settingsTrigger) return settingsTrigger;
+        if (!baseUiStyle) baseUiStyle = GM.style(BASE_UI_CSS);
+
+        settingsTrigger = $el('button', {
+            id: 'ftk-fab',
+            type: 'button',
+            title: `${SCRIPT_NAME} 设置`,
+            'aria-label': `${SCRIPT_NAME} 设置`,
+        }, [
+            $el('span', { class: 'ftk-grip' }),
+            $el('span', { class: 'ftk-fab-label' }, '设置'),
+        ]);
+
+        settingsTrigger.addEventListener('click', e => {
+            e.stopPropagation();
+            const panel = buildPanel();
+            if (panel.classList.contains('show')) closeSettingsPanel?.();
+            else openSettingsPanel?.();
+        });
+
+        document.body.appendChild(settingsTrigger);
+        return settingsTrigger;
+    }
+
+    function showSettings() {
+        if (!document.body) return setTimeout(showSettings, 50);
+        ensureSettingsTrigger();
+        buildPanel();
+        openSettingsPanel?.();
     }
 
     function applyAllHotModules() {
@@ -865,7 +888,7 @@
     // ============================================================
     function boot() {
         if (!document.body) return setTimeout(boot, 50);
-        buildPanel();
+        ensureSettingsTrigger();
         applyAllHotModules();
         log('UI 已就绪');
     }
@@ -878,13 +901,7 @@
 
     // 油猴菜单命令（脚本菜单里也能触发）
     if (typeof GM_registerMenuCommand !== 'undefined') {
-        GM_registerMenuCommand('打开设置面板', () => {
-            if (openSettingsPanel) openSettingsPanel();
-            else {
-                boot();
-                setTimeout(() => openSettingsPanel?.(), 80);
-            }
-        });
+        GM_registerMenuCommand('打开设置面板', showSettings);
         GM_registerMenuCommand('恢复默认配置', () => {
             FEATURES.forEach(f => { config[f.key] = f.default; });
             saveConfig(config);
