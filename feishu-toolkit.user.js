@@ -3,7 +3,7 @@
 // @name:zh-CN   飞书工具箱
 // @name:en      Feishu Toolkit
 // @namespace    https://github.com/BlueSkyXN/feishu-toolkit
-// @version      0.1.3
+// @version      0.1.4
 // @description  飞书网页端增强工具箱：去水印、解除复制/右键/导出/选择限制、保留表格格式、图片一键下载、外链新标签、复制为 Markdown。
 // @description:zh-CN 飞书网页端增强工具箱：去水印、解除复制/右键/导出/选择限制、保留表格格式、图片一键下载、外链新标签、复制为 Markdown。
 // @description:en Enhance Feishu/Lark web pages with watermark hiding, copy/context-menu/select/export helpers, image download, external-link handling, and Markdown copy.
@@ -30,7 +30,7 @@
     // 1. 配置中心
     // ============================================================
     const SCRIPT_NAME = '飞书工具箱';
-    const SCRIPT_VERSION = '0.1.3';
+    const SCRIPT_VERSION = '0.1.4';
     const CONFIG_KEY = 'feishu_toolkit_v1';
     const LEGACY_CONFIG_KEYS = ['feishu_enhancer_pro_v2'];
 
@@ -51,10 +51,10 @@
             requirement: '需要刷新后让 XHR hook 早于权限请求生效；只对网页端返回的权限位有效。',
         },
         {
-            key: 'bypassContextMenu', label: '解除右键限制', group: '核心保护', hot: false, default: true,
+            key: 'bypassContextMenu', label: '解除右键限制', group: '核心保护', hot: true, default: true,
             summary: '恢复浏览器原生右键菜单。',
-            impact: '会阻止飞书注册部分 contextmenu 拦截器，便于复制、另存图片或检查元素。',
-            requirement: '需要刷新后在页面早期 hook addEventListener；已注册的监听不会自动移除。',
+            impact: '保留飞书右键监听执行，只阻止其屏蔽浏览器原生菜单，降低复制上下文丢失概率。',
+            requirement: '脚本在 document-start 安装 preventDefault hook；开关可即时影响后续右键事件。',
         },
         {
             key: 'bypassUserSelect', label: '解除文本选择', group: '核心保护', hot: true, default: true,
@@ -178,17 +178,22 @@
     // 3. 全局 Hook（必须 document-start 立即执行，运行时再判断开关）
     // ============================================================
 
-    // -- 3.1 hook addEventListener：处理 contextmenu / copy --
+    // -- 3.1 hook addEventListener / preventDefault：处理 contextmenu / copy --
     (function hookEventListeners() {
+        const rawPreventDefault = Event.prototype.preventDefault;
+        if (!Event.prototype.__ftkPreventDefaultHooked) {
+            Event.prototype.__ftkPreventDefaultHooked = true;
+            Event.prototype.preventDefault = function (...args) {
+                if (config.bypassContextMenu && this?.type === 'contextmenu') {
+                    log('已放行右键菜单 preventDefault');
+                    return undefined;
+                }
+                return rawPreventDefault.apply(this, args);
+            };
+        }
+
         const rawAdd = EventTarget.prototype.addEventListener;
         EventTarget.prototype.addEventListener = function (type, listener, options) {
-            // 解除右键：让浏览器原生右键菜单出现
-            if (type === 'contextmenu' && config.bypassContextMenu) {
-                return rawAdd.call(this, type, function (event) {
-                    event.stopImmediatePropagation();
-                    return true;
-                }, options);
-            }
             // 解除 copy 事件级保护——但仅在"不保留表格格式"模式下启用
             // 因为飞书的格式化复制依赖自己的 copy handler 写入 HTML，拦了就没了
             if (type === 'copy' && config.bypassCopy && !config.keepTableFormat) {
