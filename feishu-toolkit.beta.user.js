@@ -3,7 +3,7 @@
 // @name:zh-CN   飞书工具箱 Beta
 // @name:en      Feishu Toolkit Beta
 // @namespace    https://github.com/BlueSkyXN/feishu-toolkit
-// @version      0.2.8-beta
+// @version      0.2.9-beta
 // @description  飞书网页端增强工具箱 Beta：去水印、解除复制/右键/导出/选择限制、原生优先复制、选区复制兜底、图片一键下载、媒体复制助手、外链新标签、复制为 Markdown。
 // @description:zh-CN 飞书网页端增强工具箱 Beta：去水印、解除复制/右键/导出/选择限制、原生优先复制、选区复制兜底、图片一键下载、媒体复制助手、外链新标签、复制为 Markdown。
 // @description:en Enhance Feishu/Lark web pages with watermark hiding, copy/context-menu/select/export helpers, image download, media copy assistant, external-link handling, and Markdown copy.
@@ -31,7 +31,7 @@
     // 1. 配置中心
     // ============================================================
     const SCRIPT_NAME = '飞书工具箱 Beta';
-    const SCRIPT_VERSION = '0.2.8-beta';
+    const SCRIPT_VERSION = '0.2.9-beta';
     const CONFIG_KEY = 'feishu_toolkit_beta_v1';
     const LEGACY_CONFIG_KEYS = [];
 
@@ -80,6 +80,12 @@
             summary: '飞书没有写入剪贴板时，用当前浏览器选区补 text/html 和 text/plain。',
             impact: '会额外调整 copy 监听顺序，可能影响飞书复杂块复制；默认关闭，排查受限文档时再开。',
             requirement: '需要刷新后在页面早期注册；建议只在“解除复制限制”和“原生优先复制”都开启时测试。',
+        },
+        {
+            key: 'specialBlockCopyFallback', label: '高亮块复制兜底', group: '复制实验', hot: true, default: true,
+            summary: '高亮块、引用块等特殊块复制为空时，用浏览器选区兜底。',
+            impact: '只在选区疑似特殊块时拦截 copy，不启用全局复制兜底，降低对表格和报告模块的影响。',
+            requirement: '依赖页面 DOM 中的 callout、blockquote、quote、highlight 等特征；飞书改版后可能需要补识别规则。',
         },
         // ---- T1 体验增强 ----
         {
@@ -296,6 +302,59 @@
         return isToolkitNode(selection?.anchorNode) || isToolkitNode(selection?.focusNode);
     }
 
+    function closestMatchingAncestor(node, predicate, maxDepth = 8) {
+        let el = closestElement(node);
+        let depth = 0;
+        while (el && depth < maxDepth) {
+            if (predicate(el)) return el;
+            el = el.parentElement;
+            depth += 1;
+        }
+        return null;
+    }
+
+    function getElementSignals(el) {
+        if (!el) return '';
+        return [
+            el.tagName,
+            el.id,
+            el.className,
+            el.getAttribute?.('data-block-type'),
+            el.getAttribute?.('data-type'),
+            el.getAttribute?.('data-testid'),
+            el.getAttribute?.('data-qa'),
+            el.getAttribute?.('role'),
+            el.getAttribute?.('aria-label'),
+        ].filter(Boolean).join(' ').toLowerCase();
+    }
+
+    function isSpecialCopyBlock(el) {
+        if (!el) return false;
+        if (el.tagName === 'BLOCKQUOTE') return true;
+        const signals = getElementSignals(el);
+        return /\b(callout|blockquote|quote|highlight)\b/.test(signals)
+            || /docx[-_\s]?(callout|blockquote|quote|highlight)/.test(signals)
+            || /(callout|blockquote|quote|highlight)[-_\s]?block/.test(signals)
+            || /(callout|blockquote|quote|highlight)block/.test(signals);
+    }
+
+    function selectionLooksLikeSpecialBlock() {
+        const selection = window.getSelection?.();
+        if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return false;
+
+        const nodes = [selection.anchorNode, selection.focusNode];
+        for (let i = 0; i < selection.rangeCount; i += 1) {
+            nodes.push(selection.getRangeAt(i).commonAncestorContainer);
+        }
+
+        if (nodes.some(node => closestMatchingAncestor(node, isSpecialCopyBlock))) return true;
+
+        const html = getSelectionHtml().toLowerCase();
+        return /<blockquote\b/.test(html)
+            || /\bdata-block-type=["']?(callout|blockquote|quote|highlight)\b/.test(html)
+            || /\b(class|data-testid|data-qa)=["'][^"']*(callout|blockquote|quote|highlight)/.test(html);
+    }
+
     function ensureCopyClipboardData(event, reason, options = {}) {
         const {
             requireBypassCopy = true,
@@ -399,6 +458,18 @@
             const handled = ensureCopyClipboardData(event, 'toolkit-ui-copy', {
                 requireBypassCopy: false,
                 requireSmartMode: false,
+                requireCopyFallback: false,
+                force: true,
+            });
+            if (handled) event.stopImmediatePropagation();
+        }, true);
+
+        rawAdd.call(document, 'copy', function specialBlockCopyFallback(event) {
+            if (!config.specialBlockCopyFallback) return;
+            if (!config.bypassCopy || !config.keepTableFormat) return;
+            if (!selectionLooksLikeSpecialBlock()) return;
+
+            const handled = ensureCopyClipboardData(event, 'special-block-copy-fallback', {
                 requireCopyFallback: false,
                 force: true,
             });
